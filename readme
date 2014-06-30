@@ -1,1 +1,3 @@
-Nothing to see here, yet...
+This is a html file with some css, javascript/Jquery inside of it, meant to be built with Cordova.
+
+For the GET requests it depends on a server which is currently only running locally.
