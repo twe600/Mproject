@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Under Development</title>
+  
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBm5_WQP3ilgoa1yZCNHgvUdW2sYYjmAO0"></script>
+  <script src="http://code.jquery.com/jquery-1.10.2.js"></script> <!--Jquery version-->
+  <script>
+  var mapOptions;
+  var map;
+  var center = new google.maps.LatLng(52.373094,4.892535);
+  var polylines = [];
+  var bounds;
+  var marker;  
+  var mapInit = false;
+  var fullAddress = "";
+  var inProgress = false;
+  var summaryRows = 1;
+  
+  function initialize() {
+      mapOptions = {
+        zoom: 16,
+        center: center,
+        mapTypeId: google.maps.MapTypeId.HYBRID
+      };
+      map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+    }
+  
+  function drawLines(){
+    var index;
+    for (index = 0; index < polylines.length; index++) {
+      polylines[index].setMap(map);
+    }
+    
+    if (!(typeof marker === 'undefined')) {
+      marker.setMap(map);
+    }
+    //map.panTo(center);
+    if ((polylines.length>0) && mapInit){
+    	map.fitBounds(bounds);
+    }
+  }
+  
+  function clearLines() {
+    var index;
+    for (index = 0; index < polylines.length; index++) {
+      polylines[index].setMap(null);
+    }
+    if (!(typeof marker === 'undefined')) {
+      marker.setMap(null);
+    }
+    polylines.length = 0;
+  }
+ 
+  function clearAll(){
+    summaryRows = 1;
+    $("#summary").html("<table id=\"table-summary\"><tr><td>Adres</td><td id=\"table-adres\"></td></tr></table>");
+    $("#table-straat").empty();
+    $("#table-nummer").empty();
+    $("#table-letter").empty();
+    $("#table-toevoeging").empty();
+    $("#table-postcode").empty();
+    $("#table-plaats").empty();
+    $("#table-plint").empty();
+    $("#table-zaaknaam").empty();
+    $("#table-gebruiksdoel").empty();
+    $("#table-klasse1").empty();
+    $("#table-klasse2").empty();
+    $("#table-klasse3").empty();
+    $("#table-type").empty();
+    $("#table-label").empty();
+    $("#table-gas").empty();
+    $("#table-elektra").empty();
+    $("#table-warmte").empty();
+    $("#table-index").empty();
+    $("#table-datum").empty();
+    $("#energy-warning").empty();
+    $("#table-plint").remove();
+    clearLines();
+  } 
+  
+  function hideAll(){
+    $("#summary").hide();
+    $("#address").hide();
+    $("#function").hide();
+    $("#energy").hide();
+    $("#map-canvas").hide();
+  }
+  
+  
+  function addSummaryRow(name, data){
+    if ((summaryRows % 2)===1){
+      $("#table-summary").append("<tr class=\"alt\"><td id=\"S"+name+"\">"+name+"</td><td>"+data+"</td></tr>");
+    } else {
+      $("#table-summary").append("<tr><td id=\"S"+name+"\">"+name+"</td><td>"+data+"</td></tr>");
+    }
+    summaryRows += 1;
+  }
+  
+  $(document).ready(function(){
+    hideAll();
+    $("#summary").show();
+    $("#btn1").click(function(){
+      if (!inProgress){
+      inProgress = true;
+      clearAll();
+      var url = "http://localhost:8081/Mproject/webapi/query/location?callback=?";
+      var city = $('#cityField').val();
+      var street = $('#streetField').val();
+      var houseNumber = $('#numberField').val();
+      var letter = $('#letterField').val();
+      var addition = $('#additionField').val();
+      $("#location").append("request= \""+city+"\",\""+street+"\",\""+houseNumber+"\",\""+letter+addition+"\"<br/>");
+      $.getJSON( url, {
+        city: city,
+        street: street,
+        houseNumber: houseNumber, 
+        letter: letter,
+        addition: addition
+      })
+      .done(function( result ) {
+        
+        var latitude;
+        var longtitude;
+        var straatResult, nummerResult, letterResult, toevResult, postcodeResult, plaatsResult;
+        var labelThisAddress = true;
+        var bestNumber, bestToev;
+        var eLabel;
+        clearLines();
+        bounds = new google.maps.LatLngBounds();
+        $.each(result, function(i, field){
+          if(i === "polygon") { //if there is a polygon, load all coordinates into a google.maps.polyline object.
+            var lineArray = field.split('-');
+            var index;
+            for (index = 0; index < lineArray.length; index++) {
+              var coordinateArray = lineArray[index].split(',');
+              var polylineCoordinates = [];
+              var index2;
+              for (index2 = 0; index2 < coordinateArray.length; index2++) {
+                var coordinate = coordinateArray[index2].split(' ');
+                polylineCoordinates[index2] = new google.maps.LatLng(coordinate[1], coordinate[0]); //Coordinates are inverted, maybe this is wrong somewhere else too?
+                bounds.extend(polylineCoordinates[index2]);
+              }
+              polylines[polylines.length] = new google.maps.Polyline({
+                path: polylineCoordinates,
+                geodesic: true,
+                strokeColor: '#FF0000',
+                strokeOpacity: 1.0,
+                strokeWeight: 3
+              });
+            }
+          } else if(i === "latitude") {
+            latitude = field;
+          } else if(i === "longtitude") {
+            longtitude = field;
+          } else if(i === "postcode") {
+            $("#table-postcode").append(field);
+            postcodeResult = field;
+          } else if(i === "streetname") {
+            $("#table-straat").append(field);
+            straatResult = field;
+          } else if(i === "housenumber") {
+            $("#table-nummer").append(field);
+            nummerResult = field;
+          } else if(i === "letter") {
+            $("#table-letter").append(field);
+            letterResult = field;
+          } else if(i === "addition") {
+            $("#table-toevoeging").append(field);
+            toevResult = field;
+          } else if(i === "city") {
+            $("#table-plaats").append(field);
+            plaatsResult = field;
+          } else if(i === "label") {
+            $("#table-label").append(field);
+            eLabel = field;
+            if(eLabel !== "-"){
+              addSummaryRow("Energielabel", field);
+            }
+          } else if(i === "gas") {
+            $("#table-gas").append(field);
+          } else if(i === "elektra") {
+            $("#table-elektra").append(field);
+          } else if(i === "datum") {
+            $("#table-datum").append(field);
+          } else if(i === "warmte") {
+            $("#table-warmte").append(field);
+          } else if(i === "index") {
+            $("#table-index").append(field);
+          } else if(i === "type") {
+            $("#table-type").append(field);
+          } else if(i === "zaaknaam") {
+            $("#table-zaaknaam").append(field);
+            if (field !== ""){
+              addSummaryRow("Zaaknaam", field);
+            }
+          } else if(i === "gebruiksdoel") {
+            $("#table-gebruiksdoel").append(field);
+          } else if(i === "plint") {
+            $("#table-address").append("<tr id=\"table-plint\"><td>Begane Grond?</td><td>"+field+"</td></tr>");
+          } else if(i === "klasse1") {
+            $("#table-klasse1").append(field);
+          } else if(i === "klasse2") {
+            $("#table-klasse2").append(field);
+          } else if(i === "klasse3") {
+            $("#table-klasse3").append(field);
+            if (field !== ""){
+              addSummaryRow("Functie", field);
+            }
+          } else if(i === "thisAddress") {
+            if(!(""+field === "true")){
+              labelThisAddress = false;
+            }
+            //als het adres niet gelijk is, moet ook het type woning niet worden beschreven? keuze voorleggen aan bart?
+          } else if(i === "bestNumber") {
+            bestNumber = field;
+          } else if(i === "bestToev") {
+            bestToev = field;
+          } else if(i === "resultFound") {
+            if(field){
+              $("#location").append("A result was found<br/>");
+            } else {
+              $("#location").append("No result was found<br/>");
+            }
+          } else {
+            $("#location").append(i+": "+field + "<br/>");
+          }
+        });
+        if(letterResult+toevResult === ""){
+          fullAddress = straatResult+" "+nummerResult+", "+postcodeResult+" "+plaatsResult;
+        } else { 
+          fullAddress = straatResult+" "+nummerResult+" "+letterResult+toevResult+", "+postcodeResult+" "+plaatsResult;
+        }
+        $("#table-adres").append(fullAddress);
+        if(!labelThisAddress){
+          var text = "";
+          $("#energy-warning").append("Er was geen informatie beschikbaar voor dit pand zelf, in deze tabel staan gegevens van de dichtsbijzijnde woning met dezelfde postcode."+" huisnummer: "+bestNumber);
+          text +=" (huisnummer "+bestNumber;
+          if(bestToev !== " "){
+            $("#energy-warning").append(" "+bestToev);
+            text +=" "+bestToev;
+          }
+          text +=")";
+          if(eLabel !== "-"){
+            $("#SEnergielabel").append(text);
+            $("#location").append("test.<br/>");
+          }
+        }
+        center = new google.maps.LatLng(latitude, longtitude); //obsolete
+        var point = new google.maps.LatLng(latitude,longtitude);
+        marker = new google.maps.Marker({
+          position: point,
+    	  title:"Melding" //could be more informative, maybe the address?
+    	});
+        drawLines();
+        inProgress = false;
+      });
+      } else {
+      	$("#location").append("Another lookup is currently in progress.<br/>");
+      }
+    });
+    $("#btn2").click(function(){
+      hideAll();
+      $("#summary").show();
+    });
+    $("#btn3").click(function(){
+      hideAll();
+      $("#address").show();
+    });
+    $("#btn4").click(function(){
+      hideAll();
+      $("#function").show();
+    });
+    $("#btn5").click(function(){
+      hideAll();
+      $("#energy").show();
+    });
+    $("#btn6").click(function(){
+      hideAll();
+      $("#map-canvas").show();
+      if(!mapInit){
+      	initialize();
+      	mapInit=true;
+      	drawLines();
+      }
+    });
+  });
+  </script>
+  <style>
+    .header {
+      background-color:#FF0000;
+    }
+    .menu {
+      float:left;
+      width:20%;
+      height:80%;
+      background-color:#CCDED0;
+      min-height:510px;
+      overflow-y:auto;
+    }
+    .mainContent {
+      float:left;
+      width:80%;
+      height:80%; /*why is this not working?*/
+      min-width:300px;
+      min-height:300px;
+    }
+    .footer {
+      background-color:#FF0000;
+      text-align:center;
+      clear:both;
+    }
+    html { 
+      height: 100% 
+    }
+    body { 
+      height: 100%;
+      min-width: 940px;
+      margin: 0; 
+      padding: 0;
+      font-family:Arial,Helvetica,sans-serif;
+    }
+    #map-canvas{
+      height: 100%;
+    }
+    h1{
+      margin-bottom:0;
+      text-align:center
+    }
+    button {
+      font:2em arial,sans-serif;
+      min-width: 150px;
+    }
+    .spaceButton{
+      padding-top:12%;
+      padding-bottom:12%;
+    }
+    table,th,td {
+      border:2px solid gray;
+      border-collapse: collapse;
+      width: 100%; /*maybe larger in a small div*/
+    }
+    td {
+      width: 50%;
+      padding-left: 1%;
+      color: #FFFFFF;
+      background-color: #444444;
+    }
+    tr.alt td {
+      color: #000000;
+      background-color: #E8E8E8;
+    }
+    #menuResult{
+      text-align:center;
+    }
+    .contentResult {
+      font-size: 2em;
+      min-height: 250px;
+      padding-top: 2%;
+      padding-bottom: 2%;
+      padding-right: 4%;
+      padding-left: 4%;
+    }
+    </style>
+</head>
+<body>
+  <div class="header" id="top">
+    <h1>Testing</h1>
+  </div>
+  <div class="menu" id="sidebar">
+    <div id="menuResult">
+      <div class="spaceButton"><button id="btn2">Home</button><br/></div>
+      <div class="spaceButton"><button id="btn3">Adres</button><br/></div>
+      <div class="spaceButton"><button id="btn4">Functie</button><br/></div>
+      <div class="spaceButton"><button id="btn5">Energie</button><br/></div>
+      <div class="spaceButton"><button id="btn6">Map</button><br/></div>
+      <!--5 menu options-->
+      <!--padding, buttons-->
+    </div>
+  </div>
+  <div class="mainContent">
+    <div id="summary" class="contentResult">
+      <table id="table-summary">
+        <tr>
+          <td>Adres</td>
+          <td id="table-adres"></td>
+        </tr>
+      </table>
+    </div>
+  
+    <div id="address" class="contentResult">
+      <table id="table-address">
+        <tr>
+          <td>Straatnaam</td>
+          <td id="table-straat"></td>
+        </tr>
+        <tr class="alt">
+          <td>Huisnummer</td>
+          <td id="table-nummer"></td>
+        </tr>
+        <tr>
+          <td>Huisletter</td>
+          <td id="table-letter"></td>
+        </tr>
+        <tr class="alt">
+          <td>Toevoeging</td>
+          <td id="table-toevoeging"></td>
+        </tr>
+        <tr>
+          <td>Postcode</td>
+          <td id="table-postcode"></td>
+        </tr>
+        <tr class="alt">
+          <td>Plaats</td>
+          <td id="table-plaats"></td>
+        </tr>
+      </table>
+    </div>
+  
+    <div id="function" class="contentResult">
+      <table id="table-function">
+        <tr>
+          <td>Zaaknaam</td>
+          <td id="table-zaaknaam"></td>
+        </tr>
+        <tr class="alt">
+          <td>Gebruiksdoel (BAG)</td>
+          <td id="table-gebruiksdoel"></td>
+        </tr>
+        <tr>
+          <td>Klasse 1</td>
+          <td id="table-klasse1"></td>
+        </tr>
+       <tr class="alt">
+          <td>Klasse 2</td>
+          <td id="table-klasse2"></td>
+        </tr>
+        <tr>
+          <td>Klasse 3</td>
+          <td id="table-klasse3"></td>
+        </tr>
+        <tr class="alt">
+          <td>Type (energy, uncertain)</td>
+          <td id="table-type"></td>
+        </tr>
+      </table>
+    </div>
+  
+    <div id="energy" class="contentResult">
+      <table id="table-energy">
+        <tr>
+          <td>Energie Label</td>
+          <td id="table-label"></td>
+        </tr>
+        <tr class="alt">
+          <td>Gas verbruik (m³)</td>
+          <td id="table-gas"></td>
+        </tr>
+        <tr>
+          <td>Elektra verbruik (kWh)</td>
+          <td id="table-elektra"></td>
+        </tr>
+        <tr class="alt">
+          <td>Warmte verbruik (GJ)</td>
+          <td id="table-warmte"></td>
+        </tr>
+        <tr>
+          <td>Energie Prestatie Index</td>
+          <td id="table-index"></td>
+        </tr>
+        <tr class="alt">
+          <td>Datum laatste meting</td>
+          <td id="table-datum"></td>
+        </tr>
+      </table>
+      <p id="energy-warning"></p>
+    </div>
+  
+    <div id="map-canvas" ></div>
+  </div>
+  
+  <div class="footer" id="lower">
+  	Footer.
+  </div>
+  <div>
+    <form>
+      Plaats: <input type="text" id="cityField" value="Amsterdam"><br/>
+      Straat: <input type="text" id="streetField" value="Platostraat"><br/>
+      Huisnummer: <input type="text" id="numberField" value="36"> max: 5 tekens [0-9]<br/>
+      Huisletter: <input type="text" id="letterField" value=""> max: 1 teken [A-Z]<br/>
+      Huisnummer toevoeging: <input type="text" id="additionField" value="">max: 4 tekens<br/>
+    </form>
+    <button id="btn1">Send Request</button>
+  </div>
+  <div id="location">This is where output is printed:<br/></div>
+</body>
+</html>
